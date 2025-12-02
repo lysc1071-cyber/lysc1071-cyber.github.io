@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue 概念庫存管理系統 - Google Sheet 整合</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用 Inter 字體以獲得更好的顯示效果 */
+        body { font-family: 'Inter', sans-serif; }
+        /* 狀態標籤的基礎樣式 */
+        .status-tag {
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <div id="app" class="p-4 sm:p-8">
+        <!-- 系統標題與控制項 -->
+        <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
+            <h1 class="text-3xl font-extrabold text-gray-900 mb-4">📦 庫存管理儀表板</h1>
+            
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+                <div class="relative w-full sm:w-1/3">
+                    <input
+                        type="text"
+                        placeholder="搜尋商品名稱或編號..."
+                        class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+                        :value="state.filterText"
+                        @input="handleFilterInput"
+                    >
+                    <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                
+                <button
+                    class="w-full sm:w-auto flex items-center justify-center px-6 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50"
+                    onclick="openModal(null, 'edit')"
+                >
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    新增商品
+                </button>
+            </div>
+        </header>
+
+        <!-- 庫存列表 (表格) -->
+        <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品編號</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品名稱</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">當前庫存</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">安全庫存</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="inventory-list-body">
+                    <!-- 庫存資料將由 JS 動態生成 -->
+                </tbody>
+            </table>
+
+            <!-- 列表為空時的提示 -->
+            <div id="no-items-message" class="text-center p-10 text-gray-500" style="display: none;">
+                目前沒有庫存商品資料。請點擊「新增商品」開始建立。
+            </div>
+        </div>
+        
+        <!-- 盤點紀錄列表 -->
+        <div class="mt-10 bg-white shadow-lg rounded-xl overflow-x-auto">
+            <div class="p-6 border-b border-gray-100">
+                <h2 class="text-xl font-bold text-gray-800">🗓️ 盤點調整紀錄 (最新 50 筆)</h2>
+                <p class="text-sm text-gray-500 mt-1">每次盤點或調整庫存都將在此處留下紀錄。</p>
+            </div>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品編號</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品名稱</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">調整前</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">調整後</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">差異</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">原因</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="inventory-records-body">
+                    <!-- 盤點紀錄資料將由 JS 動態生成 -->
+                </tbody>
+            </table>
+            <div id="no-records-message" class="text-center p-10 text-gray-500" style="display: none;">
+                目前沒有盤點調整紀錄。
+            </div>
+        </div>
+
+        <!-- 載入指示器 -->
+        <div id="loading-indicator" class="text-center p-4 text-blue-600" style="display: none;">
+            正在從 Google Sheet 載入資料...
+        </div>
+
+        <!-- 自定義提示框 (Alert Component) -->
+        <div id="custom-alert" class="fixed bottom-4 right-4 z-50 transition-transform duration-300 ease-out translate-x-full opacity-0">
+            <div class="px-6 py-3 rounded-lg shadow-xl flex items-center bg-green-500 text-white">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span id="alert-message"></span>
+            </div>
+        </div>
+
+        <!-- 商品編輯/新增 模態框 (Modal) -->
+        <div id="item-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900 bg-opacity-75 backdrop-blur-sm p-4">
+            <div
+                class="bg-white rounded-xl shadow-2xl w-full max-w-lg transform transition-all duration-300 scale-100"
+                id="item-modal-content"
+            >
+                <div class="p-6 border-b border-gray-100">
+                    <h2 id="modal-title" class="text-2xl font-semibold text-gray-800">新增商品</h2>
+                </div>
+                <form id="item-form" class="p-6 space-y-4">
+                    <!-- 隱藏欄位用於儲存 ID -->
+                    <input type="hidden" id="item-id">
+                    
+                    <div id="field-name">
+                        <label class="block text-sm font-medium text-gray-700 mb-1" for="item-name">商品名稱</label>
+                        <input
+                            type="text"
+                            id="item-name"
+                            required
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150"
+                            placeholder="例如：T 恤 (白色, M)"
+                        >
+                    </div>
+                    <div id="field-stock">
+                        <label class="block text-sm font-medium text-gray-700 mb-1" for="item-stock">當前庫存量</label>
+                        <input
+                            type="number"
+                            id="item-stock"
+                            required
+                            min="0"
+                            step="1"
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150"
+                            placeholder="例如：150"
+                        >
+                    </div>
+                    <div id="field-safestock">
+                        <label class="block text-sm font-medium text-gray-700 mb-1" for="item-safestock">安全庫存量</label>
+                        <input
+                            type="number"
+                            id="item-safestock"
+                            required
+                            min="0"
+                            step="1"
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150"
+                            placeholder="例如：50"
+                        >
+                    </div>
+                    <div class="pt-4 flex justify-end space-x-3">
+                        <button
+                            type="button"
+                            id="modal-cancel-btn"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition duration-150"
+                        >
+                            取消
+                        </button>
+                        <button
+                            type="submit"
+                            id="modal-submit-btn"
+                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 transition duration-150 shadow-lg shadow-blue-500/50"
+                        >
+                            儲存
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. Vue 概念：響應式資料與狀態 (Reactive Data & State) ---
+        
+        // 模擬 Vue 的 reactive 函數，使用 Proxy 實現簡單的響應式
+        function reactive(obj) {
+            return new Proxy(obj, {
+                set(target, property, value) {
+                    const success = Reflect.set(target, property, value);
+                    // 數據變化時，觸發更新
+                    updateView(); 
+                    return success;
+                }
+            });
+        }
+
+        // 核心應用程式狀態
+        const state = reactive({
+            inventory: [],
+            inventoryRecords: [], // 新增：用於儲存盤點調整紀錄
+            filterText: '',
+            editingItem: null, // 儲存正在編輯的商品物件
+            isLoading: false,
+            modalMode: 'edit' // 新增 modal mode 狀態：'edit' 或 'count'
+        });
+
+        // 庫存狀態與顏色映射
+        const stockStatusColors = {
+            '充足': 'bg-green-100 text-green-800',
+            '預警': 'bg-yellow-100 text-yellow-800',
+            '缺貨': 'bg-red-100 text-red-800',
+        };
+
+        // --- 2. Google Sheet 服務層模擬 (GSheet Service Mock) ---
+        
+        // ⚠️【重要設置】請將此 URL 替換為您的 Google Apps Script Web App URL
+        const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbxf8UA4EHdtFuqAsWay4pY0yOw9OsZIVBp-9ZlpcTIuLSZFWGQd-iQDBspgLnyySE6jPQ/exec';
+        
+        /**
+         * 根據當前庫存和安全庫存計算狀態
+         * @param {number} stock - 當前庫存
+         * @param {number} safeStock - 安全庫存
+         * @returns {string} 狀態字串
+         */
+        function getStockStatus(stock, safeStock) {
+            if (stock <= 0) return '缺貨';
+            if (stock <= safeStock) return '預警';
+            return '充足';
+        }
+
+        /**
+         * 模擬從 Google Sheet 獲取商品資料
+         */
+        async function fetchInventoryFromSheet() {
+            state.isLoading = true;
+            try {
+                // ⚠️ 實際呼叫 Apps Script 或 Sheet API 應在此處實現
+                // ----------------------------------------------------
+                
+                // 實際呼叫 Apps Script:
+                const response = await fetch(SHEET_API_URL);
+                const result = await response.json();
+                
+                if (result.status === 200) {
+                    state.inventory = result.data.map(item => ({
+                        // 確保數值型別正確
+                        ...item,
+                        id: parseInt(item.id),
+                        stock: parseInt(item.stock),
+                        safeStock: parseInt(item.safeStock),
+                    }));
+                    
+                    // 由於 Apps Script 範例中沒有返回盤點紀錄，這裡保留模擬紀錄：
+                    state.inventoryRecords = [
+                        { itemId: 'P-002', name: '牛仔褲 (深藍, 32)', oldStock: 50, newStock: 45, change: -5, date: '2025/12/01 10:00:00', reason: '盤點調整' },
+                        { itemId: 'P-004', name: '連帽衫 (灰色, L)', oldStock: 25, newStock: 30, change: 5, date: '2025/11/29 15:30:00', reason: '盤點調整' },
+                    ];
+                    
+                    showCustomAlert('庫存資料載入成功！', 'success');
+                } else {
+                    throw new Error(result.error || result.message);
+                }
+                
+                // ----------------------------------------------------
+            } catch (error) {
+                console.error('從 Google Sheet 載入資料失敗:', error);
+                showCustomAlert('載入資料失敗，請檢查 API 設置和 Sheet 名稱。', 'error');
+                // 使用模擬數據作為備用，方便UI調試
+                state.inventory = [
+                    { id: 1, itemId: 'P-001', name: 'T 恤 (白色, M)', stock: 150, safeStock: 50, date: '2025-12-01' },
+                    { id: 2, itemId: 'P-002', name: '牛仔褲 (深藍, 32)', stock: 45, safeStock: 50, date: '2025-12-01' },
+                ];
+                state.inventoryRecords = [];
+            } finally {
+                state.isLoading = false;
+            }
+        }
+
+        /**
+         * 模擬將商品資料保存到 Google Sheet (新增或更新)
+         * @param {Object} item - 商品物件
+         */
+        async function saveItemToSheet(item) {
+            state.isLoading = true;
+            try {
+                // ----------------------------------------------------
+                // 實際呼叫 Apps Script:
+                const action = item.id ? 'update' : 'create';
+                const payload = { action: action, data: item };
+                if (action === 'update') payload.data.id = item.id; // 確保ID是更新的一部分
+
+                const response = await fetch(SHEET_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                // 1. 檢查 Apps Script 是否成功返回狀態 200
+                if (result.status !== 200) {
+                     throw new Error(result.error || result.message || "Apps Script 執行失敗。");
+                }
+                // ----------------------------------------------------
+                
+                if (item.id) {
+                    const index = state.inventory.findIndex(i => i.id === item.id);
+                    const existingItem = state.inventory[index];
+
+                    if (state.modalMode === 'count') {
+                        // 【盤點/調整模式】 - 僅更新庫存
+                        const oldStock = existingItem.stock;
+                        const newStock = item.stock;
+                        const change = newStock - oldStock;
+
+                        // 1. 建立盤點紀錄 (前端模擬，建議後端也同步紀錄)
+                        const record = {
+                            itemId: existingItem.itemId,
+                            name: existingItem.name,
+                            oldStock: oldStock,
+                            newStock: newStock,
+                            change: change,
+                            date: new Date().toLocaleString('zh-TW', { 
+                                year: 'numeric', month: '2-digit', day: '2-digit', 
+                                hour: '2-digit', minute: '2-digit', second: '2-digit', 
+                                hour12: false 
+                            }),
+                            reason: '盤點調整' 
+                        };
+                        state.inventoryRecords.unshift(record); // 加入到紀錄列表最前面
+                        state.inventoryRecords = state.inventoryRecords.slice(0, 50);
+
+                        // 2. 更新庫存 (更新 state 以觸發 UI 刷新)
+                        state.inventory[index].stock = newStock;
+                        state.inventory[index].date = new Date().toISOString().slice(0, 10);
+                        
+                        showCustomAlert(`商品 ${existingItem.itemId} 盤點數量已更新 (${oldStock} -> ${newStock})！`, 'success');
+
+                    } else { 
+                        // 【編輯詳情模式】 - 更新所有欄位
+                        state.inventory[index] = { 
+                            ...item, 
+                            itemId: existingItem.itemId, // 保留 itemId
+                            date: new Date().toISOString().slice(0, 10) // 更新日期
+                        };
+                        showCustomAlert(`商品 ${item.itemId || item.name} 已成功更新！`, 'success');
+                    }
+                } else {
+                    // 【新增模式】
+                    const newRecord = result.data;
+
+                    // 2. 嚴格檢查 Apps Script 是否返回了 ID 和 ItemId
+                    if (!newRecord || !newRecord.id || !newRecord.itemId) {
+                         throw new Error("Apps Script 返回的數據結構不完整，請檢查 createRecord 函數是否返回了 id 和 itemId。");
+                    }
+
+                    const newItem = { 
+                        ...item, 
+                        id: parseInt(newRecord.id), // 使用 Apps Script 返回的 ID
+                        itemId: newRecord.itemId, // 使用 Apps Script 返回的 ItemId
+                        date: new Date().toISOString().slice(0, 10) 
+                    };
+                    state.inventory.unshift(newItem);
+                    showCustomAlert(`新商品 ${newItem.itemId} 已成功建立！`, 'success');
+                }
+            } catch (error) {
+                console.error('保存商品失敗:', error);
+                
+                // --- 更新後的錯誤處理與除錯提示 ---
+                let errorMessage = `網路連線或 Apps Script 執行失敗：${error.message}`;
+                if (error.message.includes("Failed to fetch") || error.message.includes("CORS")) {
+                    errorMessage = "CORS 錯誤：無法連線到 Google Apps Script！請檢查以下事項：\n1. 確認 HTML 檔案不是直接從本機硬碟打開 (Origin: null)。請將其部署到 Web Server (如 GitHub Pages)。\n2. 確認 Apps Script Web App 已部署為『執行身分：我』且『存取權：任何人』。";
+                    console.warn(errorMessage);
+                }
+                showCustomAlert(`保存商品失敗：${errorMessage}`, 'error');
+                // --- 結束更新 ---
+                
+            } finally {
+                state.isLoading = false;
+            }
+        }
+
+        /**
+         * 模擬從 Google Sheet 刪除商品
+         * @param {number} id - 商品的唯一 ID
+         */
+        async function deleteItemFromSheet(id) {
+             state.isLoading = true;
+            try {
+                // ----------------------------------------------------
+                // 實際呼叫 Apps Script:
+                const payload = { action: 'delete', id: id };
+                const response = await fetch(SHEET_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.status !== 200) {
+                     throw new Error(result.error || result.message);
+                }
+                // ----------------------------------------------------
+                
+                const itemName = state.inventory.find(i => i.id === id)?.name;
+                state.inventory = state.inventory.filter(i => i.id !== id);
+                showCustomAlert(`商品 ${itemName} 已從庫存中移除。`, 'success');
+
+            } catch (error) {
+                console.error('刪除商品失敗:', error);
+                showCustomAlert(`刪除商品失敗：${error.message}`, 'error');
+            } finally {
+                state.isLoading = false;
+            }
+        }
+
+        // --- 3. 視圖更新函數 (View Rendering) ---
+        
+        // 根據 filterText 過濾商品列表
+        function getFilteredInventory() {
+            const filter = state.filterText.toLowerCase().trim();
+            if (!filter) {
+                return state.inventory;
+            }
+            return state.inventory.filter(item =>
+                item.itemId.toString().toLowerCase().includes(filter) ||
+                item.name.toLowerCase().includes(filter)
+            );
+        }
+
+        // 主渲染函數，在 state 變化時呼叫
+        function updateView() {
+            const listBody = document.getElementById('inventory-list-body');
+            const noItemsMsg = document.getElementById('no-items-message');
+            const loadingIndicator = document.getElementById('loading-indicator');
+
+            // 更新載入狀態
+            loadingIndicator.style.display = state.isLoading ? 'block' : 'none';
+
+            const filteredInventory = getFilteredInventory();
+            listBody.innerHTML = ''; // 清空列表
+
+            // --- 渲染庫存列表 ---
+            if (filteredInventory.length === 0 && !state.isLoading) {
+                noItemsMsg.style.display = 'block';
+            } else {
+                noItemsMsg.style.display = 'none';
+                
+                filteredInventory.forEach(item => {
+                    const row = document.createElement('tr');
+                    
+                    const status = getStockStatus(item.stock, item.safeStock);
+                    const statusClass = stockStatusColors[status] || 'bg-gray-100 text-gray-800';
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.itemId}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${item.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${status === '缺貨' ? 'text-red-600' : 'text-gray-800'}">${item.stock} 件</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${item.safeStock} 件</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="status-tag ${statusClass}">${status}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button data-id="${item.id}" data-mode="edit" class="text-indigo-600 hover:text-indigo-900 mr-3 action-btn">編輯詳情</button>
+                            <button data-id="${item.id}" data-mode="count" class="text-green-600 hover:text-green-900 mr-3 action-btn">盤點/調整</button>
+                            <button data-id="${item.id}" data-name="${item.name}" class="text-red-600 hover:text-red-900 delete-btn">刪除</button>
+                        </td>
+                    `;
+                    listBody.appendChild(row);
+                });
+
+                // 重新綁定事件
+                document.querySelectorAll('.action-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        const id = parseInt(e.target.dataset.id);
+                        const mode = e.target.dataset.mode; // 'edit' or 'count'
+                        const item = state.inventory.find(i => i.id === id);
+                        openModal(item, mode);
+                    };
+                });
+                
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        const id = parseInt(e.target.dataset.id);
+                        const name = e.target.dataset.name;
+                        handleDelete(id, name);
+                    };
+                });
+            }
+
+            // --- 渲染盤點紀錄列表 ---
+            const recordsListBody = document.getElementById('inventory-records-body');
+            const noRecordsMsg = document.getElementById('no-records-message');
+            recordsListBody.innerHTML = ''; // 清空列表
+
+            if (state.inventoryRecords.length === 0) {
+                noRecordsMsg.style.display = 'block';
+            } else {
+                noRecordsMsg.style.display = 'none';
+
+                state.inventoryRecords.forEach((record, index) => {
+                    const row = document.createElement('tr');
+                    // 根據差異量顯示顏色和正負號
+                    const changeClass = record.change >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
+                    const sign = record.change > 0 ? '+' : '';
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${record.date}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${record.itemId}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${record.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${record.oldStock}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${record.newStock}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm ${changeClass}">${sign}${record.change}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${record.reason}</td>
+                    `;
+                    recordsListBody.appendChild(row);
+                });
+            }
+        }
+
+        // --- 4. 事件處理函數 (Event Handlers) ---
+
+        function handleFilterInput(event) {
+            state.filterText = event.target.value;
+        }
+
+        function openModal(item, mode = 'edit') {
+            // 更新狀態中的 mode
+            state.modalMode = mode; 
+            state.editingItem = item;
+            
+            const modal = document.getElementById('item-modal');
+            const form = document.getElementById('item-form');
+            const modalTitle = document.getElementById('modal-title');
+            const submitBtn = document.getElementById('modal-submit-btn');
+
+            // 取得需要控制顯示/隱藏的欄位 DOM
+            const fieldName = document.getElementById('field-name');
+            const fieldSafeStock = document.getElementById('field-safestock');
+            const stockLabel = document.querySelector('#field-stock label');
+
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex'; // 確保顯示
+
+            if (item) {
+                document.getElementById('item-id').value = item.id;
+                document.getElementById('item-name').value = item.name;
+                document.getElementById('item-stock').value = item.stock;
+                document.getElementById('item-safestock').value = item.safeStock;
+            } else {
+                // 新增商品模式固定為 'edit'
+                state.modalMode = 'edit';
+                form.reset(); // 清空表單
+                document.getElementById('item-id').value = '';
+            }
+            
+            // 根據模式設定 UI
+            if (state.modalMode === 'count') {
+                modalTitle.textContent = `盤點/調整庫存：${item.itemId || ''}`;
+                submitBtn.textContent = '確認盤點數量';
+                fieldName.style.display = 'none';
+                fieldSafeStock.style.display = 'none';
+                stockLabel.textContent = '輸入實際盤點數量';
+            } else { // 'edit' mode (新增或編輯詳情)
+                modalTitle.textContent = item ? `編輯商品：${item.itemId}` : '新增商品';
+                submitBtn.textContent = item ? '儲存變更' : '新增';
+                fieldName.style.display = 'block';
+                fieldSafeStock.style.display = 'block';
+                stockLabel.textContent = '當前庫存量';
+            }
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('item-modal');
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+            state.editingItem = null;
+            state.modalMode = 'edit'; // 關閉後重設模式
+        }
+
+        async function saveItem(event) {
+            event.preventDefault();
+            
+            const id = document.getElementById('item-id').value ? parseInt(document.getElementById('item-id').value) : null;
+            
+            let name, safeStock;
+            const stock = parseInt(document.getElementById('item-stock').value);
+
+            if (state.modalMode === 'count' && id !== null) {
+                // 盤點模式：只更新庫存，名稱和安全庫存沿用舊值
+                const existingItem = state.inventory.find(i => i.id === id);
+                if (!existingItem) {
+                    showCustomAlert('錯誤：找不到要盤點的商品。', 'error');
+                    return;
+                }
+                name = existingItem.name;
+                safeStock = existingItem.safeStock;
+                // 為了讓 saveItemToSheet 知道這是盤點，我們傳入所有數據
+            } else {
+                // 編輯或新增模式：從表單獲取所有值
+                name = document.getElementById('item-name').value;
+                safeStock = parseInt(document.getElementById('item-safestock').value);
+            }
+
+            const itemData = { id, name, stock, safeStock };
+            
+            // 呼叫模擬的 API 函數
+            await saveItemToSheet(itemData); 
+            
+            closeModal();
+            // 視圖會因為 state.inventory 變化而自動更新 (Proxy 機制)
+        }
+
+        function handleDelete(id, name) {
+            // 使用 window.confirm 模擬刪除確認
+            if (window.confirm(`確定要刪除商品：${name} 嗎？此操作不可逆。`)) {
+                 // 呼叫模擬的 API 函數
+                deleteItemFromSheet(id);
+                // 視圖會因為 state.inventory 變化而自動更新
+            }
+        }
+
+        // 自定義提示框顯示
+        function showCustomAlert(message, type = 'success') {
+            const alertDiv = document.getElementById('custom-alert');
+            const msgSpan = document.getElementById('alert-message');
+            
+            msgSpan.textContent = message;
+            alertDiv.className = 'fixed bottom-4 right-4 z-50 transition-transform duration-300 ease-out translate-x-0 opacity-100';
+            
+            // 根據類型設置顏色
+            alertDiv.firstElementChild.className = `px-6 py-3 rounded-lg shadow-xl flex items-center ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`;
+
+            setTimeout(() => {
+                alertDiv.className = 'fixed bottom-4 right-4 z-50 transition-transform duration-300 ease-out translate-x-full opacity-0';
+            }, 3000);
+        }
+
+        // --- 5. 應用程式初始化 ---
+
+        // 在 DOM 加載完成後綁定事件和初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 綁定表單提交事件
+            document.getElementById('item-form').onsubmit = saveItem;
+            
+            // 綁定模態框背景點擊和取消按鈕事件
+            const modal = document.getElementById('item-modal');
+            const modalContent = document.getElementById('item-modal-content');
+            const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+            // 點擊背景關閉
+            modal.onclick = closeModal;
+            // 點擊內容區阻止事件冒泡
+            modalContent.onclick = (e) => e.stopPropagation();
+            // 綁定取消按鈕
+            modalCancelBtn.onclick = closeModal;
+            
+            // 首次載入資料
+            fetchInventoryFromSheet();
+        });
+
+        // 初始化時執行一次視圖更新以顯示初始狀態 (例如載入中)
+        updateView();
+        
+    </script>
+</body>
+</html>
